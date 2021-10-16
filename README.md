@@ -23,3 +23,8 @@ Only one template available for the time being.
 - One dataset is mounted at `/home` for using rootless containers in Podman
 - LXD installed and configured (ansible-install-containers.yml)
 - Install Podman with ZFS storage backend (ansible-install-containers.yml)
+
+
+# Installation
+
+- add file `secret.pkrvars.hcl` and `terraform.tfvars` with content `hcloud_token = "..."`

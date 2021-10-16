@@ -1,0 +1,11 @@
+secret.*
+*.pem
+.terraform/
+*.tfstate
+*.backup
+*.tfvars
+terraform.tfvars
+*.lock.hcl
+/tb.yml
+/hosts
+/archive

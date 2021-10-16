@@ -1,0 +1,155 @@
+
+
+- name: tasks to run from within packer
+  hosts: default
+  tasks:
+
+    - name: add sshkey
+      authorized_key:
+        user: "root"
+        state: present
+        manage_dir: no
+        path: /root/.ssh/authorized_keys
+        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+
+    - name: move backup partition table to end
+      command: sgdisk -e /dev/sda
+    
+    - name: Read device information (always use unit when probing)
+      community.general.parted: device=/dev/sda unit=MiB
+      register: sda_info
+
+
+    - name: resize first
+      community.general.parted:
+        device: /dev/sda
+        number: 1
+        state: present
+        part_start: "258MiB"
+        part_end: "5GiB"
+        resize: true
+        label: gpt
+        name: rootfs
+
+    - name: add second
+      community.general.parted:
+        device: /dev/sda
+        number: 2
+        state: present
+        part_start: "5121MiB"
+        part_end: "99%"
+        resize: true
+        label: gpt
+        name: home
+
+    - name: packages to build zfs
+      apt:
+        name:
+          - "linux-headers-{{ ansible_kernel }}"
+          - build-essential
+          - autoconf
+          - automake
+          - libtool
+          - gawk
+          - alien
+          - fakeroot
+          - dkms
+          - libblkid-dev
+          - uuid-dev
+          - libudev-dev
+          - libssl-dev
+          - zlib1g-dev
+          - libaio-dev
+          - libattr1-dev
+          - libelf-dev
+          - python3
+          - python3-dev
+          - python3-setuptools
+          - python3-cffi
+          - libffi-dev
+          - python3-packaging
+          - git
+        install_recommends: no
+        update_cache: yes
+
+    - set_fact:
+        zfs_dir: /root/zfs-2.1.0
+    
+    - name: get zfs release 2.1.0
+      ansible.builtin.unarchive:
+        src: https://github.com/openzfs/zfs/releases/download/zfs-2.1.0/zfs-2.1.0.tar.gz
+        dest: "{{ zfs_dir | dirname  }}"
+        remote_src: yes
+
+    - name: run autogen
+      ansible.builtin.shell:
+        cmd: sh autogen.sh
+        chdir: "{{ zfs_dir }}"
+
+    - name: run ./configure
+      ansible.builtin.shell:
+        cmd: ./configure
+        chdir: "{{ zfs_dir }}"
+
+    - name: run make
+      ansible.builtin.shell:
+        cmd: "make -s -j{{ ansible_processor_vcpus }}"
+        chdir: "{{ zfs_dir }}"
+
+    - name: run make deb
+      ansible.builtin.shell:
+        cmd: "make deb"
+        chdir: "{{ zfs_dir }}"
+    - set_fact:
+        zfs_dir: /root/zfs-2.1.0
+
+    - name: Find deb packages to install
+      find:
+        paths: "{{ zfs_dir }}"
+        depth: 1
+        patterns: "*.deb"
+      register: deb_packages
+
+    - debug:
+        msg: "{{ item }}"
+      loop:
+        - "{{ deb_packages.files | map(attribute='path') | reject('equalto', zfs_dir + '/zfs-dkms_2.1.0-1_amd64.deb') }}"
+        - "{{ deb_packages.files | map(attribute='path') }}"
+        - "{{ deb_packages.files | map(attribute='path') | reject('contains', 'zfs-dkms') }}"
+
+    - name: Install a .deb package
+      apt:
+        deb: "{{ item }}"
+      loop: "{{ deb_packages.files | map(attribute='path') | reject('contains', 'zfs-dkms') }}"
+
+    - name: Add zfs module
+      community.general.modprobe:
+        name: zfs
+        state: present
+
+    - set_fact:
+        #home_size: 10G
+        home_size: all
+
+    - name: aktive zfs
+      command: /sbin/modprobe zfs
+
+    - name: Read device information (always use unit when probing)
+      community.general.parted: device=/dev/sda unit=MiB
+      register: sda_info
+
+    - name: create new pool
+      command: /usr/sbin/zpool create -f -o compatibility=ubuntu-20.04 -o autotrim=on -o autoexpand=on -o ashift=12 -O atime=off -O dedup=off  -O canmount=off -O compression=lz4 -O normalization=formD -O mountpoint=none tank  /dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_drive-scsi0-0-0-0-part2
+
+    - name: create home dataset on pool
+      command: /usr/sbin/zfs create -o setuid=off -o mountpoint=/home tank/home
+
+    - name: create lxd dataset on pool
+      command: /usr/sbin/zfs create -o mountpoint=/var/lib/lxd tank/lxd
+
+    - name: create podman (containers) dataset on pool
+      command: /usr/sbin/zfs create -o mountpoint=/var/lib/containers tank/containers
+
+    - name: export pool
+      command: /usr/sbin/zpool export tank
+

@@ -1,10 +1,11 @@
 - hosts: ztest
   tasks:
-    - name: install snapd
+    - name: Install snapd.
       ansible.builtin.package:
         name:
           - snapd
-    - name: Install LXD 4.0
+
+    - name: Install LXD 4.0.
       community.general.snap:
         name: lxd
         channel: 4.0/stable
@@ -21,8 +22,7 @@
         state: present
       when: ansible_distribution == 'Ubuntu' and ansible_distribution_release == "focal"
 
-
-    - name:
+    - name: Install Podman packages.
       ansible.builtin.package:
         name:
           - podman
@@ -30,13 +30,36 @@
           - skopeo
           - slirp4netns
 
-    - name: Set driver to zfs.
+    - name: Set driver to zfs in Podman.
       lineinfile:
         path: /etc/containers/storage.conf
         regexp: ^driver
         line: driver = "zfs"
         insertafter: '^# Default Storage Driver'
-    - shell: |
+
+    - name: Set environment variable DOCKER_HOST to podman socket.
+      lineinfile:
+        dest: /etc/environment
+        state: present
+        regexp: '^DOCKER_HOST'
+        line: 'DOCKER_HOST=unix:///run/podman/podman.sock'
+
+    - name: Install docker-compose.
+      get_url:
+        url: https://github.com/docker/compose/releases/download/1.29.2/docker-compose-Linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+
+    - name: Enable Podman socket.
+      ansible.builtin.systemd:
+        name: podman.socket
+        enabled: yes
+        masked: no
+        daemon_reload: yes
+        state: started
+
+    - name: Init LXD.
+      shell: |
         lxd init --preseed << EOF
         config: {}
         networks:

@@ -2,6 +2,8 @@
 
 - name: tasks to run from within packer
   hosts: default
+  vars:
+    zfs_version: "2.1.2"
   tasks:
 
     - name: add sshkey
@@ -73,11 +75,11 @@
         update_cache: yes
 
     - set_fact:
-        zfs_dir: /root/zfs-2.1.0
+        zfs_dir: "/root/zfs-{{ zfs_version }}"
     
-    - name: get zfs release 2.1.0
+    - name: "get zfs release {{ zfs_version }}"
       ansible.builtin.unarchive:
-        src: https://github.com/openzfs/zfs/releases/download/zfs-2.1.0/zfs-2.1.0.tar.gz
+        src: "https://github.com/openzfs/zfs/releases/download/zfs-{{ zfs_version }}/zfs-{{ zfs_version }}.tar.gz"
         dest: "{{ zfs_dir | dirname  }}"
         remote_src: yes
 
@@ -101,7 +103,7 @@
         cmd: "make deb"
         chdir: "{{ zfs_dir }}"
     - set_fact:
-        zfs_dir: /root/zfs-2.1.0
+        zfs_dir: /root/zfs-{{ zfs_version }}
 
     - name: Find deb packages to install
       find:
@@ -113,7 +115,7 @@
     - debug:
         msg: "{{ item }}"
       loop:
-        - "{{ deb_packages.files | map(attribute='path') | reject('equalto', zfs_dir + '/zfs-dkms_2.1.0-1_amd64.deb') }}"
+        - "{{ deb_packages.files | map(attribute='path') | reject('equalto', zfs_dir + '/zfs-dkms_{{ zfs_version }}-1_amd64.deb') }}"
         - "{{ deb_packages.files | map(attribute='path') }}"
         - "{{ deb_packages.files | map(attribute='path') | reject('contains', 'zfs-dkms') }}"
 

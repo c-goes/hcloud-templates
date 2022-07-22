@@ -3,7 +3,7 @@
 - name: tasks to run from within packer
   hosts: default
   vars:
-    zfs_version: "2.1.2"
+    zfs_version: "2.1.4"
   tasks:
 
     - name: add sshkey

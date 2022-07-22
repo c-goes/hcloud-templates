@@ -10,7 +10,7 @@ terraform {
   required_providers {
     hcloud = {
       source = "hetznercloud/hcloud"
-      version = "1.30.0"
+      version = "1.33.2"
     }
   }
 }
@@ -35,6 +35,7 @@ resource "hcloud_server" "web" {
     image = data.hcloud_image.ubuntu_zfshome.id
     server_type = "cx21"
     ssh_keys = [ hcloud_ssh_key.mykey.id ]
+    location = "nbg1" // nbg1, fsn1, hel1
     user_data = <<EOF
 #cloud-config
 packages:

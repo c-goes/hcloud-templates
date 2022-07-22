@@ -5,10 +5,10 @@
         name:
           - snapd
 
-    - name: Install LXD 4.0.
+    - name: Install LXD 5.0.
       community.general.snap:
         name: lxd
-        channel: 4.0/stable
+        channel: 5.0/stable
 
     - name: Add kubic repository key on Ubuntu.
       apt_key:
@@ -64,7 +64,7 @@
         config: {}
         networks:
         - config:
-            ipv4.address: 10.211.202.254/24
+            ipv4.address: 172.16.10.254/24
             ipv4.nat: "true"
             ipv6.address: auto
           description: ""

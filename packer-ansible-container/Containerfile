@@ -1,0 +1,4 @@
+FROM docker.io/hashicorp/packer:1.9
+RUN apk add ansible
+RUN packer plugins install github.com/hetznercloud/hcloud
+ENTRYPOINT ["packer"]

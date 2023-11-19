@@ -1,0 +1,71 @@
+version: '3.7'
+
+networks:
+  backend:
+
+
+services:
+  mariadb:
+    image: docker.io/mariadb:latest
+    container_name: mariadb
+    networks:
+      - backend
+    volumes:
+      - "./data/mariadb:/var/lib/mysql"
+      - "./conf/mariadb:/docker-entrypoint-initdb.d"
+    restart: unless-stopped
+    ports:
+      - "3306:3306"
+    env_file:
+      - "./conf/mariadb.env"
+    healthcheck:
+      test: pidof mariadbd || exit 1
+      interval: 120s
+      timeout: 10s
+      retries: 3
+
+  # repeat wordpress-site-name service for each wordpress site you
+  # create
+  wordpress:
+    depends_on:
+      - mariadb
+      - caddy
+    image: docker.io/wordpress:php8.2-fpm-alpine
+    container_name: wordpress
+    restart: unless-stopped
+    networks:
+      - backend
+    env_file:
+      - "./conf/wordpress.env"
+    volumes:
+      - "./data/wordpress:/var/www/html"
+      - "./conf/php.ini:/usr/local/etc/php/conf.d/custom.ini"
+    healthcheck:
+      test: pidof php-fpm || exit 1
+      interval: 120s
+      timeout: 10s
+      retries: 3
+
+  caddy:
+    image: docker.io/caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    environment:
+      # change to your timezone
+      - "TZ=Europe/Berlin"
+    networks:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+      #- "2019:2019"
+    volumes:
+      - "./conf/Caddyfile:/etc/caddy/Caddyfile"
+      - "./data/wordpress:/srv"
+      - "./data/caddy2/data:/data"
+      - "./data/caddy2/config:/config"
+    healthcheck:
+      test: pidof caddy || exit 1
+      interval: 120s
+      timeout: 10s
+      retries: 3

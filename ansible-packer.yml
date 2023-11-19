@@ -1,51 +1,53 @@
 
-
-- name: tasks to run from within packer
+---
+- name: Tasks to run from within packer
   hosts: default
   vars:
-    zfs_version: "2.1.4"
+    zfs_version: "2.2.0"
   tasks:
 
-    - name: add sshkey
-      authorized_key:
-        user: "root"
-        state: present
-        manage_dir: no
-        path: /root/.ssh/authorized_keys
-        key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+    # - name: Add sshkey
+    #   ansible.posix.authorized_key:
+    #     user: "root"
+    #     state: present
+    #     manage_dir: false
+    #     path: /root/.ssh/authorized_keys
+    #     key: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
 
-    - name: move backup partition table to end
-      command: sgdisk -e /dev/sda
-    
+    - name: Move backup partition table to end
+      ansible.builtin.command: sgdisk -e /dev/sda
+      changed_when: false
+
     - name: Read device information (always use unit when probing)
-      community.general.parted: device=/dev/sda unit=MiB
+      community.general.parted:
+        device: /dev/sda
+        unit: MiB
       register: sda_info
 
-
-    - name: resize first
+    - name: Resize first partition
       community.general.parted:
         device: /dev/sda
         number: 1
         state: present
         part_start: "258MiB"
-        part_end: "5GiB"
+        part_end: "10GiB"
         resize: true
         label: gpt
         name: rootfs
 
-    - name: add second
+    - name: Add second partition
       community.general.parted:
         device: /dev/sda
         number: 2
         state: present
-        part_start: "5121MiB"
+        part_start: "10485760KiB"
         part_end: "99%"
         resize: true
         label: gpt
         name: home
 
-    - name: packages to build zfs
-      apt:
+    - name: Packages to build ZFS
+      ansible.builtin.apt:
         name:
           - "linux-headers-{{ ansible_kernel }}"
           - build-essential
@@ -71,36 +73,37 @@
           - libffi-dev
           - python3-packaging
           - git
-        install_recommends: no
-        update_cache: yes
+        install_recommends: false
+        update_cache: true
 
-    - set_fact:
+    - name: Define ZFS directory
+      set_fact:
         zfs_dir: "/root/zfs-{{ zfs_version }}"
-    
-    - name: "get zfs release {{ zfs_version }}"
+
+    - name: "Get zfs release {{ zfs_version }}"
       ansible.builtin.unarchive:
         src: "https://github.com/openzfs/zfs/releases/download/zfs-{{ zfs_version }}/zfs-{{ zfs_version }}.tar.gz"
         dest: "{{ zfs_dir | dirname  }}"
-        remote_src: yes
+        remote_src: true
 
-    - name: run autogen
+    - name: Run autogen
       ansible.builtin.shell:
         cmd: sh autogen.sh
         chdir: "{{ zfs_dir }}"
 
-    - name: run ./configure
+    - name: Run ./configure
       ansible.builtin.shell:
         cmd: ./configure
         chdir: "{{ zfs_dir }}"
 
-    - name: run make
-      ansible.builtin.shell:
-        cmd: "make -s -j{{ ansible_processor_vcpus }}"
-        chdir: "{{ zfs_dir }}"
+    # - name: run make
+    #   ansible.builtin.shell:
+    #     cmd: "make -s -j{{ ansible_processor_vcpus }}"
+    #     chdir: "{{ zfs_dir }}"
 
     - name: run make deb
       ansible.builtin.shell:
-        cmd: "make deb"
+        cmd: "make -s -j{{ ansible_processor_vcpus }} deb"
         chdir: "{{ zfs_dir }}"
     - set_fact:
         zfs_dir: /root/zfs-{{ zfs_version }}
@@ -119,7 +122,7 @@
         - "{{ deb_packages.files | map(attribute='path') }}"
         - "{{ deb_packages.files | map(attribute='path') | reject('contains', 'zfs-dkms') }}"
 
-    - name: Install a .deb package
+    - name: all zfs packages except zfs-dkms
       apt:
         deb: "{{ item }}"
       loop: "{{ deb_packages.files | map(attribute='path') | reject('contains', 'zfs-dkms') }}"
@@ -140,8 +143,10 @@
       community.general.parted: device=/dev/sda unit=MiB
       register: sda_info
 
+    - pause:
+
     - name: create new pool
-      command: /usr/sbin/zpool create -f -o compatibility=ubuntu-20.04 -o autotrim=on -o autoexpand=on -o ashift=12 -O atime=off -O dedup=off  -O canmount=off -O compression=lz4 -O normalization=formD -O mountpoint=none tank  /dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_drive-scsi0-0-0-0-part2
+      shell: /usr/sbin/zpool create -f -o compatibility=ubuntu-20.04 -o autotrim=on -o autoexpand=on -o ashift=12 -O atime=off -O dedup=off  -O canmount=off -O compression=lz4 -O normalization=formD -O mountpoint=none tank  /dev/disk/by-id/scsi-0QEMU_QEMU_HARDDISK_*-part2
 
     - name: create home dataset on pool
       command: /usr/sbin/zfs create -o setuid=off -o mountpoint=/home tank/home

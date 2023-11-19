@@ -1,0 +1,329 @@
+- hosts: webservers
+  tasks:
+    - name: Run tasks to configure unattended upgrades.
+      ansible.builtin.import_tasks: tasks/unattended.yml
+
+    - name: Install snapd.
+      ansible.builtin.package:
+        name:
+          - snapd
+
+    - name: Install LXD 5.0.
+      community.general.snap:
+        name: lxd
+        channel: 5.0/stable
+
+    - name: Add kubic repository key on Ubuntu.
+      apt_key:
+        url: https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable/xUbuntu_{{ ansible_distribution_version}}/Release.key
+        state: present
+      when: ansible_distribution == 'Ubuntu' and ansible_distribution_release == "focal"
+
+    - name: Add kubic repository on Ubuntu.
+      apt_repository:
+        repo: deb http://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/xUbuntu_{{ ansible_distribution_version}}/ /
+        state: present
+      when: ansible_distribution == 'Ubuntu' and ansible_distribution_release == "focal"
+
+    - name: Install Podman packages.
+      ansible.builtin.package:
+        name:
+          - podman
+          - buildah
+          - skopeo
+          - slirp4netns
+
+    # - name: Set driver to zfs in Podman.
+    #   lineinfile:
+    #     path: /etc/containers/storage.conf
+    #     regexp: ^driver
+    #     line: driver = "zfs"
+    #     insertafter: '^# Default Storage Driver'
+
+    # - name: Set environment variable DOCKER_HOST to podman socket.
+    #   lineinfile:
+    #     dest: /etc/environment
+    #     state: present
+    #     regexp: '^DOCKER_HOST'
+    #     line: 'DOCKER_HOST=unix:///run/podman/podman.sock'
+
+    # - name: Install docker-compose.
+    #   get_url:
+    #     url: https://github.com/docker/compose/releases/download/1.29.2/docker-compose-Linux-x86_64
+    #     dest: /usr/local/bin/docker-compose
+    #     mode: '0755'
+
+    # - name: Enable Podman socket.
+    #   ansible.builtin.systemd:
+    #     name: podman.socket
+    #     enabled: yes
+    #     masked: no
+    #     daemon_reload: yes
+    #     state: started
+
+    - name: Init LXD.
+      shell: |
+        lxd init --preseed << EOF
+        config: {}
+        networks:
+        - config:
+            ipv4.address: 172.16.10.254/24
+            ipv4.nat: "true"
+            ipv6.address: auto
+          description: ""
+          name: lxdbr0
+          type: ""
+        storage_pools:
+        - config:
+            source: tank/lxd
+          description: ""
+          name: default
+          driver: zfs
+        profiles:
+        - config: {}
+          description: ""
+          devices:
+            eth0:
+              name: eth0
+              network: lxdbr0
+              type: nic
+            root:
+              path: /
+              pool: default
+              type: disk
+          name: default
+        cluster: null
+
+        EOF
+      changed_when: false
+    - name: Install useful packages.
+      ansible.builtin.package:
+        name:
+          - sanoid
+          - fish
+          - nano
+          - htop
+          - jq
+
+    - name: Enable a timer unit for sanoid
+      ansible.builtin.systemd:
+        name: sanoid.timer
+        state: started
+        enabled: true
+    - name: Create /etc/sanoid
+      ansible.builtin.file:
+        path: /etc/sanoid
+        state: directory
+        mode: '0755'
+    # TODO volumes
+    - name: Configure sanoid
+      ansible.builtin.copy:
+        dest: /etc/sanoid/sanoid.conf
+        mode: '0644'
+        content: |
+          [tank/home]
+            use_template = production
+          # podman containers
+          [tank/containers]
+            use_template = production
+            recursive = yes
+            process_children_only = yes
+          # lxd containers
+          [tank/lxd/containers]
+            use_template = production
+            recursive = yes
+            process_children_only = yes
+          # lxd vms
+          [tank/lxd/virtual-machines]
+          use_template = production
+          recursive = yes
+          process_children_only = yes
+
+          #############################
+          # templates below this line #
+          #############################
+
+          [template_production]
+                  frequently = 0
+                  hourly = 36
+                  daily = 30
+                  monthly = 3
+                  yearly = 0
+                  autosnap = yes
+                  autoprune = yes
+    - name: Allow routed as default
+      community.general.ufw:
+        default: allow
+        direction: routed
+    - name: configure ufw for dnsmasq of LXD
+      community.general.ufw:
+        rule: allow
+        interface: lxdbr0
+        direction: in
+    - name: configure ufw for dnsmasq of LXD (routing)
+      community.general.ufw:
+        rule: allow
+        route: true
+        interface: lxdbr0
+        direction: in
+    - name: "make .lxd domains resolvable from host"
+      ansible.builtin.copy:
+        dest: /etc/systemd/network/lxdbr0.network
+        mode: '0644'
+        content: |
+          [Match]
+          Name=lxdbr0
+
+          [Network]
+          DNS=172.16.10.254
+          Domains=~lxd
+      register: nw
+    - name: reboot after network change
+      reboot:
+      when: nw.changed
+
+
+    - name: Add own ssh key to default profile
+      community.general.lxd_profile:
+        name: default
+        merge_profile: true
+        config:
+          cloud-init.user-data: |
+            #cloud-config
+            packages:
+              - openssh-server
+            ssh_pwauth: false
+            users:
+              - name: ansible
+                gecos: Ansible User
+                groups: users,admin,wheel
+                sudo: ALL=(ALL) NOPASSWD:ALL
+                shell: /bin/bash
+                ssh_authorized_keys:
+                  - "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+
+
+    - name: Create the wordpress container
+      community.general.lxd_container:
+        name: wordpress
+        ignore_volatile_options: true
+        state: started
+        source:
+          type: image
+          mode: pull
+          server: https://cloud-images.ubuntu.com/releases
+          protocol: simplestreams # if you get a 404, try setting protocol: simplestreams
+          alias: "22.04"
+        profiles: ["default"]
+        wait_for_ipv4_addresses: true
+        timeout: 600
+        config:
+          security.nesting: "true"
+      register: wordpress
+
+
+    - name: Create the xcaddy container
+      community.general.lxd_container:
+        name: xcaddy
+        ignore_volatile_options: true
+        state: started
+        source:
+          type: image
+          mode: pull
+          server: https://cloud-images.ubuntu.com/releases
+          protocol: simplestreams # if you get a 404, try setting protocol: simplestreams
+          alias: "22.04"
+        profiles: ["default"]
+        wait_for_ipv4_addresses: true
+        timeout: 600
+      register: xcaddy
+
+
+    - name: Get IP address from wordpress container.
+      shell:
+        cmd: |
+          lxc ls wordpress -c4 -f json | jq -r '.[0].state.network.eth0.addresses[0].address'
+      register: wp_ip
+    
+    - debug:
+        msg: "{{ wp_ip }}"
+    
+    - debug:
+        msg: "{{ wp_ip.stdout }}"
+
+    - name: Configure destination NAT.
+      ansible.builtin.blockinfile:
+        path: /etc/ufw/before.rules
+        insertbefore: BOF
+        block: |
+          *nat
+          :PREROUTING ACCEPT [0:0]
+          -A PREROUTING -i {{ ansible_default_ipv4.interface  }} -p tcp --dport 80 -j DNAT --to-destination {{ wp_ip.stdout }}
+          -A PREROUTING -i {{ ansible_default_ipv4.interface  }} -p tcp --dport 443 -j DNAT --to-destination {{ wp_ip.stdout }}
+          COMMIT
+    
+    - name: Restart ufw.
+      ansible.builtin.systemd_service:
+        name: ufw
+        state: restarted
+
+- name: Install wordpress.
+  hosts: wordpress.lxd
+  become: true
+  tasks:
+    - name: Wait for wordpress.lxd to allow connections
+      ansible.builtin.wait_for_connection:
+
+    - name: Create wp directories
+      file:
+        path: "{{ item  }}"
+        state: directory
+      loop:
+        - /root/wp
+        - /root/wp/conf
+        - /root/wp/data
+    - name: Run nesting playbook on wordpress LXD container.
+      ansible.builtin.import_tasks: tasks/nesting.yml
+    - name: Copy docker-compose.yml.
+      ansible.builtin.copy:
+        dest: /root/wp/docker-compose.yml
+        src: wordpress/docker-compose.yml
+    - name: Install template for mariadb.
+      ansible.builtin.template:
+        src: wordpress/mariadb.env.j2
+        dest: /root/wp/conf/mariadb.env
+    - name: Install template for mariadb.
+      ansible.builtin.template:
+        src: wordpress/Caddyfile.j2
+        dest: /root/wp/conf/Caddyfile
+    - name: Install template for wordpress.
+      ansible.builtin.template:
+        src: wordpress/wordpress.env.j2
+        dest: /root/wp/conf/wordpress.env
+    - name: Install template for php.
+      ansible.builtin.template:
+        src: wordpress/php.ini.j2
+        dest: /root/wp/conf/php.ini
+
+      # fix systemd unit
+    
+    - name: Run podman-compose.
+      command: podman-compose up -d --force-recreate
+      become: yes
+      args:
+        chdir: /root/wp
+    # https://github.com/containers/podman-compose/issues/534#issuecomment-1274603325
+
+- name: Install xcaddy.
+  hosts: xcaddy.lxd
+  tasks:
+    - name: Wait for xcaddy.lxd to allow connections
+      ansible.builtin.wait_for_connection:
+    - name: Install fish
+      become: true
+      ansible.builtin.apt:
+        name:
+          - fish
+
+    # copy Dockerfile
+    # copy docker-compose.yml to build xcaddy

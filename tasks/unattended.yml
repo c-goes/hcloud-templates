@@ -1,0 +1,28 @@
+- name: Enable Unattended Reboot
+  lineinfile:
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    line: 'Unattended-Upgrade::Automatic-Reboot "true";'
+    insertafter: '^//Unattended-Upgrade::Automatic-Reboot '
+
+
+- name: Enable Unattended Reboot regardless of logged-in users
+  lineinfile:
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    line: 'Unattended-Upgrade::Automatic-Reboot-WithUsers "true";'
+    insertafter: '^//Unattended-Upgrade::Automatic-Reboot-WithUsers '
+
+- name: Enable Unattended Reboot regardless of logged-in users
+  lineinfile:
+    path: /etc/apt/apt.conf.d/50unattended-upgrades
+    line: 'Unattended-Upgrade::Automatic-Reboot-Time "03:17";'
+    insertafter: '^//Unattended-Upgrade::Automatic-Reboot-Time '
+
+- name: Check Unattended Upgrade
+  command: apt-config dump APT::Periodic::Unattended-Upgrade
+  register: uu_check
+  changed_when: false
+
+- name: Assert Unattended Upgrade is enabled
+  assert:
+    that:
+      - "'APT::Periodic::Unattended-Upgrade \"1\";' == uu_check.stdout"

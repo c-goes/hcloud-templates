@@ -1,0 +1,36 @@
+{
+    acme_ca https://acme-staging-v02.api.letsencrypt.org/directory
+}
+
+{{ caddy_host }} {
+  redir https://www.{{ caddy_host }}{uri}
+}
+
+www.{{ caddy_host }} {
+  root * /srv
+  log
+  @canonicalPath {
+    file {
+      try_files {path}/index.php
+    }
+    not {
+      path */
+    }
+  }
+  @phpFiles {
+    path *.php
+  }
+  route {
+    redir @canonicalPath {path}/ 308
+    try_files {path} {path}/index.php index.php
+    reverse_proxy @phpFiles {
+      to wordpress:9000
+      transport fastcgi {
+        split .php
+        root /var/www/html
+      }
+    }
+    respond /uploads/*.php 404
+    file_server
+  }
+}

@@ -10,10 +10,15 @@ terraform {
   required_providers {
     hcloud = {
       source = "hetznercloud/hcloud"
-      version = "1.33.2"
+      version = "1.44.1"
+    }
+    ansible = {
+      version = "~> 1.1.0"
+      source  = "ansible/ansible"
     }
   }
 }
+
 
 provider "hcloud" {
     token = var.hcloud_token
@@ -25,15 +30,24 @@ resource "hcloud_ssh_key" "mykey" {
 }
 
 
-data "hcloud_image" "ubuntu_zfshome" {
-  with_selector = "type=ubuntu-zfshome"
+data "hcloud_image" "universal_server_template" {
+  with_selector = "type=universal-server-template"
 }
 
-# Create a server
+resource "ansible_host" "web" {
+  name   = hcloud_server.web.ipv4_address
+  groups = ["webservers"]
+  variables = {
+    ansible_user                 = "root",
+    ansible_ssh_private_key_file = "~/.ssh/id_ed25519",
+    ansible_python_interpreter   = "/usr/bin/python3"
+  }
+}
+
 resource "hcloud_server" "web" {
     name = "my-server"
-    image = data.hcloud_image.ubuntu_zfshome.id
-    server_type = "cx21"
+    image = data.hcloud_image.universal_server_template.id
+    server_type = "cx11"
     ssh_keys = [ hcloud_ssh_key.mykey.id ]
     location = "nbg1" // nbg1, fsn1, hel1
     user_data = <<EOF

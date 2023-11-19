@@ -1,0 +1,5 @@
+FROM docker.io/hashicorp/terraform:1.6
+RUN apk add ansible ssh-agent
+WORKDIR /tpl
+RUN ansible-galaxy collection install -r requirements.yml
+ENTRYPOINT ["terraform"]

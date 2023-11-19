@@ -15,7 +15,7 @@ packer:
 
 .PHONY: terraformshell
 terraformshell:
-	podman run -i -t -w /tpl -v $(shell pwd):/tpl -v ~/.ssh/id_ed25519.pub:/root/.ssh/id_ed25519.pub:ro --entrypoint="/bin/sh" docker.io/hashicorp/terraform:$(terraform_ver)
+	podman run -i -t -w /tpl -v $(shell pwd):/tpl -v ~/.ssh/id_ed25519.pub:/root/.ssh/id_ed25519.pub:ro --entrypoint="/bin/sh" localhost/terraform-ansible
 
 .PHONY: terraform
 terraform:

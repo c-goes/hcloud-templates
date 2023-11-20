@@ -1,4 +1,4 @@
-FROM docker.io/hashicorp/packer:1.9
-RUN apk add ansible
-RUN packer plugins install github.com/hetznercloud/hcloud
+FROM docker.io/hashicorp/packer:full
+RUN apk add ansible openssh
+RUN packer init /tpl/universal-server-template.pkr.hcl
 ENTRYPOINT ["packer"]

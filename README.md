@@ -16,9 +16,8 @@ Only one template available for the time being.
 
 ## Template for hosting containers with ZFS
 
-- Smallest server possible currently is CX21
 - cloud-init for installing ufw and zfsutils-linux, and importing the pool
-- Will make small partition for `/` (4,8G)
+- Will make small partition for `/` (10G)
 - Will make a large partition for ZFS (maximum)
 - One dataset is mounted at `/home` for using rootless containers in Podman
 - LXD installed and configured (ansible-install-containers.yml)
@@ -27,4 +26,5 @@ Only one template available for the time being.
 
 # Installation
 
-- add file `secret.pkrvars.hcl` and `terraform.tfvars` with content `hcloud_token = "..."`
+- add file `secret.pkrvars.hcl` and `terraform.tfvars` with content `hcloud_token = "xyz"`
+- add file `secret.env` with content `HCLOUD_TOKEN=xyz`

@@ -1,0 +1,5 @@
+FROM docker.io/golang:latest
+RUN go install github.com/hetznercloud/cli/cmd/hcloud@latest
+ADD delete.sh /usr/local/bin
+RUN chmod +x /usr/local/bin/delete.sh
+ENTRYPOINT [ "hcloud" ]

@@ -2,8 +2,9 @@
 
 .PHONY: container
 container:
-	podman build -t localhost/packer-ansible packer-ansible-container
+	podman build -v $(shell pwd):/tpl -t localhost/packer-ansible packer-ansible-container
 	podman build -v $(shell pwd):/tpl -t localhost/terraform-ansible terraform-ansible-container
+	podman build -v $(shell pwd):/tpl -t localhost/hcloud-container hcloud-container
 
 .PHONY: packershell
 packershell:
@@ -12,6 +13,11 @@ packershell:
 .PHONY: packer
 packer:
 	podman run -i -t -w /tpl -v $(shell pwd):/tpl -v ~/.ssh/id_ed25519.pub:/root/.ssh/id_ed25519.pub:ro localhost/packer-ansible build -var-file=secret.pkrvars.hcl universal-server-template.pkr.hcl
+
+.PHONY: deletesnapshots
+deletesnapshots:
+	podman run -i -w /tpl --env-file=secret.env --entrypoint=/usr/local/bin/delete.sh localhost/hcloud-container universal-server-template-bookworm-home
+	podman run -i -w /tpl --env-file=secret.env --entrypoint=/usr/local/bin/delete.sh localhost/hcloud-container universal-server-template-jammy-home
 
 .PHONY: terraformshell
 terraformshell:

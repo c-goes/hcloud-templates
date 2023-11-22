@@ -30,8 +30,8 @@ resource "hcloud_ssh_key" "mykey" {
 }
 
 
-data "hcloud_image" "universal_server_template" {
-  with_selector = "type=universal-server-template"
+data "hcloud_image" "universal_server_template_jammy_home" {
+  with_selector = "type=universal-server-template-jammy-home"
 }
 
 resource "ansible_host" "web" {
@@ -46,7 +46,7 @@ resource "ansible_host" "web" {
 
 resource "hcloud_server" "web" {
     name = "my-server"
-    image = data.hcloud_image.universal_server_template.id
+    image = data.hcloud_image.universal_server_template_jammy_home.id
     server_type = "cx11"
     ssh_keys = [ hcloud_ssh_key.mykey.id ]
     location = "nbg1" // nbg1, fsn1, hel1
